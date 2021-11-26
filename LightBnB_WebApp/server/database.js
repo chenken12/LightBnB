@@ -88,6 +88,7 @@ exports.getAllReservations = getAllReservations;
  const getAllProperties = function (options, limit = 10) {
   // 1
   const queryParams = [];
+  const optionsArr = [];
   // 2
   let queryString = `
   SELECT properties.*, avg(property_reviews.rating) as average_rating
@@ -98,25 +99,29 @@ exports.getAllReservations = getAllReservations;
   // 3
   if (options.city) {
     queryParams.push(`%${options.city}%`);
-    queryString += `WHERE city LIKE $${queryParams.length} `;
+    optionsArr.push(`city LIKE $${queryParams.length} `);
   }
-  if (options.minimum_price_per_night || options.maximum_price_per_night) {
-    if (options.city) {
-      queryString += `AND `;
-    } else {
-      queryString += `WHERE `;
-    }
-    if (options.minimum_price_per_night) {
-      queryParams.push(`${options.minimum_price_per_night * 100}`);
-      queryString += `cost_per_night >= $${queryParams.length} `;
-    }
-    if (options.maximum_price_per_night) {
-      if (options.minimum_price_per_night) {
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night * 100}`);
+    optionsArr.push(`cost_per_night >= $${queryParams.length} `);
+  }
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night * 100}`);
+    optionsArr.push(`city LIKE $${queryParams.length} `);
+  }
+  if (options.owner_id) {
+    queryParams.push(`${options.owner_id}`);
+    optionsArr.push(`owner_id = $${queryParams.length} `);
+  }
+  if (optionsArr.length > 0) { 
+    optionsArr.forEach((option, index)=> {
+      if (index > 0) {
         queryString += `AND `;
+      } else {
+        queryString += `WHERE `;
       }
-      queryParams.push(`${options.maximum_price_per_night * 100}`);
-      queryString += `cost_per_night <= $${queryParams.length} `;
-    }
+      queryString += option;
+    });
   }
 
   // 4
@@ -144,9 +149,25 @@ exports.getAllProperties = getAllProperties;
  * @return {Promise<{}>} A promise to the property.
  */
 const addProperty = function(property) {
-  const propertyId = Object.keys(properties).length + 1;
-  property.id = propertyId;
-  properties[propertyId] = property;
-  return Promise.resolve(property);
-}
+ 
+  const queryParams = [];
+  const placeHolder = [];
+
+  Object.values(property).forEach((values, index)=> {
+    queryParams.push(values);
+    placeHolder.push(`$${index+1}`);
+  });
+
+  let queryString = `
+  INSERT INTO properties (${Object.keys(property).join()})
+  VALUES(${placeHolder.join()})
+  RETURNING *;`;
+
+  console.log(queryString, queryParams);
+
+  return pool.query(queryString, queryParams)
+    .then(result => result.rows[0])
+    .catch(err => console.error(err.message));
+
+};
 exports.addProperty = addProperty;
